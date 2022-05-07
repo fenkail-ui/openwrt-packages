@@ -212,7 +212,7 @@ yml_provider_check()
 provider_path_line=$(ruby_read "$1" ".key?('$2')")
 local provider_path_check
 if "$provider_path_line"; then
-   while ( [ -n "$(pidof clash)" ] )
+   while :;
    do
       provider_path_check=$(ruby -ryaml -E UTF-8 -e "
       Value = YAML.load_file('$1');
@@ -235,7 +235,7 @@ if "$provider_path_line"; then
       end
       }
       " 2>/dev/null)
-      if [ "$provider_path_check" = "false" ]; then
+      if [ "$provider_path_check" == "false" ] && [ -n "$(pidof clash)" ]; then
          sleep 2
       else
          break
@@ -243,7 +243,7 @@ if "$provider_path_line"; then
    done
 fi
 
-if [ -z "$(pidof clash)" ] && [ -n "$provider_path_check" ]; then
+if [ -z "$(pidof clash)" ] && [ "$provider_path_check" == "false" ]; then
    if [ "$2" = "proxy-providers" ]; then
       LOG_OUT "Error: Failed To Download Proxy-providers, Please Check The Log Page For Detailed error information!"
    else
@@ -275,15 +275,9 @@ sub_info_get()
    fi
    
    if [ -z "$name" ]; then
-   	  CONFIG_NAME="config"
       RAW_CONFIG_FILE="/etc/openclash/config/config.yaml"
-      CONFIG_FILE="/etc/openclash/config.yaml"
-      TMP_CONFIG_FILE="/tmp/config.yaml"
    else
-      CONFIG_NAME="$name"
       RAW_CONFIG_FILE="/etc/openclash/config/$name.yaml"
-      CONFIG_FILE="/etc/openclash/$name.yaml"
-      TMP_CONFIG_FILE="/tmp/$name.yaml"
    fi
    
    uci -q set openclash.config.config_path="$RAW_CONFIG_FILE"
@@ -301,7 +295,7 @@ if [ -z "$RAW_CONFIG_FILE" ] || [ ! -f "$RAW_CONFIG_FILE" ]; then
       uci -q commit openclash
       RAW_CONFIG_FILE="/etc/openclash/config/$CONFIG_NAME"
       CONFIG_FILE="/etc/openclash/$CONFIG_NAME"
-      TMP_CONFIG_FILE="/tmp/$CONFIG_NAME"
+      TMP_CONFIG_FILE="/tmp/yaml_config_tmp_$CONFIG_NAME"
       
    fi
 fi 2>/dev/null
@@ -312,8 +306,7 @@ HISTORY_PATH="/etc/openclash/history/${CONFIG_NAME%.*}.db"
 if [ ! -f "$RAW_CONFIG_FILE" ]; then
    config_load "openclash"
    config_foreach sub_info_get "config_subscribe"
-   subscribe_auto_update=$(uci get openclash.config.auto_update 2>/dev/null)
-   if [ "$subscribe_enable" = "1" ] && [ "$subscribe_auto_update" -eq 1 ]; then
+   if [ "$subscribe_enable" = "1" ]; then
       LOG_OUT "Config File Does Not Exist, You Have Set Subscription Information, Ready To Download..."
       nohup /usr/share/openclash/openclash.sh &
       del_lock
@@ -1280,10 +1273,6 @@ if [ -n "$en_mode_tun" ]; then
    TUN_WAIT=0
    ip link set utun up
 
-   if [ "$enable_meta_core" == "1" ]; then
-      route add -net 198.18.0.0/16 dev utun
-   fi
-
    while ( [ -n "$(pidof clash)" ] && [ -z "$(ip route list |grep utun)" ] && [ "$TUN_WAIT" -le 3 ] )
    do
       ip link set utun up
@@ -1367,7 +1356,7 @@ fi
 
 #ipv6
 if [ "$ipv6_enable" -eq 1 ] && [ -n "$(ip6tables -t mangle -L 2>&1 | grep -o 'Chain')" ]; then
-   if [ "$enable_redirect_dns" -eq 1 ] && [ -z "$(ip6tables -t nat -nL PREROUTING --line-number |grep 'dns_hijack')"]; then
+   if [ "$enable_redirect_dns" -eq 1 ] && [ -z "$(ip6tables -t nat -nL PREROUTING --line-number |grep 'DNS Hijack')"]; then
       ip6tables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports "$DNSPORT" -m comment --comment "OpenClash DNS Hijack"
       ip6tables -t nat -I PREROUTING -p tcp --dport 53 -j REDIRECT --to-ports "$DNSPORT" -m comment --comment "OpenClash DNS Hijack"
    fi
@@ -1583,6 +1572,7 @@ get_config()
    enable_meta_sniffer_custom=$(uci -q get openclash.config.enable_meta_sniffer_custom || echo 0)
    geodata_loader=$(uci -q get openclash.config.geodata_loader || echo "memconservative")
    enable_geoip_dat=$(uci -q get openclash.config.enable_geoip_dat || echo 0)
+   enable_tcp_concurrent=$(uci -q get openclash.config.enable_tcp_concurrent || echo 0)
    _koolshare=$(cat /usr/lib/os-release 2>/dev/null |grep OPENWRT_RELEASE 2>/dev/null |grep -i koolshare 2>/dev/null)
    [ -z "$dns_port" ] && dns_port=7874 && uci -q set openclash.config.dns_port=7874
    uci -q set openclash.config.restricted_mode=0 && uci -q commit openclash
@@ -1611,7 +1601,7 @@ start()
    if ! $quick_start; then
       LOG_OUT "Step 3: Modify The Config File..."
       config_check
-      /usr/share/openclash/yml_change.sh 2>/dev/null "$en_mode" "$da_password" "$cn_port" "$proxy_port" "$TMP_CONFIG_FILE" "$ipv6_enable" "$http_port" "$socks_port" "$log_level" "$proxy_mode" "$en_mode_tun" "$stack_type" "$dns_port" "$mixed_port" "$tproxy_port" "$ipv6_dns" "$store_fakeip" "$stream_domains_prefetch" "$dns_remote" "$enable_meta_core" "$enable_meta_sniffer" "$enable_geoip_dat" "$geodata_loader" "$enable_meta_sniffer_custom" "$interface_name"
+      /usr/share/openclash/yml_change.sh 2>/dev/null "$en_mode" "$da_password" "$cn_port" "$proxy_port" "$TMP_CONFIG_FILE" "$ipv6_enable" "$http_port" "$socks_port" "$log_level" "$proxy_mode" "$en_mode_tun" "$stack_type" "$dns_port" "$mixed_port" "$tproxy_port" "$ipv6_dns" "$store_fakeip" "$stream_domains_prefetch" "$dns_remote" "$enable_meta_core" "$enable_meta_sniffer" "$enable_geoip_dat" "$geodata_loader" "$enable_meta_sniffer_custom" "$interface_name" "$enable_tcp_concurrent"
       /usr/share/openclash/yml_rules_change.sh 2>/dev/null "$rule_source" "$enable_custom_clash_rules" "$TMP_CONFIG_FILE" "$enable_rule_proxy" "$CONFIG_NAME" "$router_self_proxy" "$lan_ip" "$proxy_port" "$tproxy_port"
    fi
    

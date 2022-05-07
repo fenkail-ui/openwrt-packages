@@ -40,6 +40,12 @@ else
    enable_geoip_dat="true"
 fi
 
+if [ "${26}" != "1" ]; then
+   enable_tcp_concurrent="false"
+else
+   enable_tcp_concurrent="true"
+fi
+
 if [ "$(ruby_read "$5" "['external-controller']")" != "$controller_address:$3" ]; then
    uci -q set openclash.config.config_reload=0
 fi
@@ -284,9 +290,10 @@ Thread.new{
    if ${21} == 1 then
       Value['geodata-mode']=$enable_geoip_dat;
       Value['geodata-loader']='${23}';
+      Value['tcp-concurrent']=$enable_tcp_concurrent;
    else
       if Value.key?('geodata-mode') then
-       Value.delete('geodata-mode');
+         Value.delete('geodata-mode');
       end
       if Value.key?('geodata-loader') then
          Value.delete('geodata-loader');
@@ -314,10 +321,11 @@ Thread.new{
       Value['dns'].delete('fake-ip-range');
    end;
    Value['dns']['listen']='0.0.0.0:${13}';
-   if ${21} == 1 then
+   #meta only
+   if ${20} == 1 and ${21} == 1 then
       Value_sniffer={'sniffer'=>{'enable'=>true}};
       Value['sniffer']=Value_sniffer['sniffer'];
-      Value_sniffer={'sniffing'=>['tls']};
+      Value_sniffer={'sniffing'=>['tls','http']};
       Value['sniffer'].merge!(Value_sniffer);
       if File::exist?('/etc/openclash/custom/openclash_force_sniffing_domain.yaml') and ${24} == 1 then
          Value_7 = YAML.load_file('/etc/openclash/custom/openclash_force_sniffing_domain.yaml');
@@ -329,8 +337,12 @@ Thread.new{
       if File::exist?('/etc/openclash/custom/openclash_sniffing_domain_filter.yaml') and ${24} == 1 then
          Value_7 = YAML.load_file('/etc/openclash/custom/openclash_sniffing_domain_filter.yaml');
          if Value_7 != false and not Value_7['skip-sni'].to_a.empty? then
-            Value['sniffer']['skip-sni']=Value_7['skip-sni'];
-            Value['sniffer']['skip-sni']=Value['sniffer']['skip-sni'].uniq;
+            Value['sniffer']['skip-domain']=Value_7['skip-sni'];
+            Value['sniffer']['skip-domain']=Value['sniffer']['skip-domain'].uniq;
+         end
+         if Value_7 != false and not Value_7['skip-domain'].to_a.empty? then
+            Value['sniffer']['skip-domain']=Value_7['skip-domain'];
+            Value['sniffer']['skip-domain']=Value['sniffer']['skip-domain'].uniq;
          end
       end;
       if File::exist?('/etc/openclash/custom/openclash_sniffing_port_filter.yaml') and ${24} == 1 then
